@@ -7,6 +7,7 @@ from glob import glob
 import torch, face_detection
 from models import Wav2Lip
 import platform
+import pickle
 
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
 
@@ -49,6 +50,9 @@ parser.add_argument('--rotate', default=False, action='store_true',
 
 parser.add_argument('--nosmooth', default=False, action='store_true',
 					help='Prevent smoothing face detections over a short temporal window')
+
+parser.add_argument('--pre_calc', type=str, 
+					help='Filepath of precalculated face detection', required=False)
 
 args = parser.parse_args()
 args.img_size = 96
@@ -120,16 +124,22 @@ def face_detect(images):
 def datagen(frames, mels):
 	img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
-	if args.box[0] == -1:
+	if args.box[0] == -1 and args.pre_calc is None:
 		if not args.static:
 			face_det_results, frames = face_detect(frames) # BGR2RGB for CNN face detection
+			with open (r'temp/face_detect.txt', 'w') as f:
+				pickle.dump(face_det_results, f)
 		else:
 			face_det_results, _ = face_detect([frames[0]])
-	else:
+	elif args.box[0] != -1:
 		print('Using the specified bounding box instead of face detection...')
 		y1, y2, x1, x2 = args.box
 		face_det_results = [[f[y1: y2, x1:x2], (y1, y2, x1, x2)] for f in frames]
-
+	elif args.pre_calc is not None:
+		print('Using pre-calculated bounding boxes...')
+		with open (args.pre_calc, 'r') as f:
+			face_det_results = pickle.load(f)
+	
 	for i, m in enumerate(mels):
 		idx = 0 if args.static else i%len(frames)
 		frame_to_save = frames[idx].copy()
